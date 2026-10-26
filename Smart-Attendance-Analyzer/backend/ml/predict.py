@@ -207,7 +207,8 @@ def predict_segment(
 
 
 # --------------------------------------------------------------------------
-# AI Recommendation Engine (rule-based)
+# --------------------------------------------------------------------------
+# AI Recommendation Engine (Module 4: Forward Chaining Inference)
 # --------------------------------------------------------------------------
 
 def generate_ai_recommendations(
@@ -216,15 +217,32 @@ def generate_ai_recommendations(
     forecast_attendance: float,
     segment: str,
     weakest_subject: Optional[str] = None,
-) -> List[str]:
+) -> tuple[List[str], dict]:
     """
-    Generate human-readable, actionable recommendations from the combined
-    model outputs. Rule-based (not another ML model) so the advice stays
-    transparent, predictable, and easy to justify to end users.
+    Generates human-readable, actionable recommendations using both:
+    1. Forward Chaining Inference over the Horn-clause Knowledge Base (Module 4)
+    2. Numerical attendance deficit calculations for concrete recovery advice.
     """
+    try:
+        from ml.knowledge_engine import extract_facts_from_features, forward_chain
+    except ImportError:
+        from knowledge_engine import extract_facts_from_features, forward_chain
+
+    # Step 1: Extract propositions and run Forward Chaining inference
+    facts = extract_facts_from_features(
+        current_attendance=features.current_attendance,
+        previous_attendance=features.previous_attendance,
+        leaves_taken=features.leaves_taken,
+        internal_marks=features.internal_marks,
+        distance_km=features.distance_km,
+        monthly_attendance=features.monthly_attendance,
+    )
+    inference_result = forward_chain(facts)
+    inferred_tips = list(inference_result.get("recommendations", []))
+
     tips: List[str] = []
 
-    # --- Attendance threshold warnings ---
+    # --- Concrete numerical attendance threshold guidance ---
     if features.current_attendance < 75:
         classes_short = max(0, int(np.ceil((75 - features.current_attendance) / 2)))
         tips.append(
@@ -234,34 +252,14 @@ def generate_ai_recommendations(
     elif features.current_attendance < 80:
         tips.append("You're just above the minimum requirement — a few more absences could put you at risk.")
 
+    # --- Knowledge-based deductions from Forward Chaining ---
+    tips.extend(inferred_tips)
+
     # --- Forecast-based warning ---
     if forecast_attendance < 75 <= features.current_attendance:
         tips.append("Your attendance may drop below 75% if the current trend continues. Act now to stay safe.")
     elif forecast_attendance < features.current_attendance - 3:
         tips.append("Your projected attendance is trending downward. Consider reducing avoidable absences.")
-
-    # --- Trend-based encouragement ---
-    trend_rate = features.current_attendance - features.previous_attendance
-    if trend_rate > 3:
-        tips.append("Great progress — you are improving compared to last semester. Keep up the momentum!")
-    elif trend_rate < -3:
-        tips.append("Your attendance has declined compared to last semester. Try to identify what changed.")
-
-    # --- Risk-level specific advice ---
-    if risk_level == "High Risk":
-        tips.append("You are at high risk of detention. Please speak with your faculty advisor as soon as possible.")
-    elif risk_level == "Medium Risk":
-        tips.append("You're in the medium risk zone — consistent attendance over the next few weeks will help.")
-    else:
-        tips.append("You're in the low risk zone. Maintain your current attendance habits.")
-
-    # --- Leaves-specific advice ---
-    if features.leaves_taken >= 10:
-        tips.append("You've taken a high number of leaves this term. Limit further leaves unless necessary.")
-
-    # --- Internal marks + attendance correlation nudge ---
-    if features.internal_marks < 50 and features.current_attendance < 75:
-        tips.append("Low attendance is likely affecting your internal marks. Improving one will help the other.")
 
     # --- Segment-specific framing ---
     if segment == "Critical":
@@ -281,7 +279,7 @@ def generate_ai_recommendations(
             seen.add(tip)
             unique_tips.append(tip)
 
-    return unique_tips[:6]
+    return unique_tips[:6], inference_result
 
 
 # --------------------------------------------------------------------------
@@ -308,7 +306,7 @@ def get_full_prediction(
         distance_km=features.distance_km,
     )
 
-    recommendations = generate_ai_recommendations(
+    recommendations, inference_result = generate_ai_recommendations(
         features=features,
         risk_level=risk_result["risk_level"],
         forecast_attendance=forecast_result["forecast_attendance_percentage"],
@@ -324,6 +322,7 @@ def get_full_prediction(
         "forecast_model_used": forecast_result["model_used"],
         "cluster_segment": segment,
         "ai_recommendations": recommendations,
+        "knowledge_inference": inference_result,
     }
 
 

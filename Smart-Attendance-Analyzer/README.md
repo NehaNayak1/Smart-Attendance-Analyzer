@@ -115,10 +115,9 @@ npm run dev                                    # http://localhost:5173
 | Faculty | `fac0001` | `faculty123` |
 | Admin | `admin` | `admin123` |
 
----
-
 ## Documentation
 
+- [AI & ML Viva / Presentation Summary](docs/AI_AND_ML_PROJECT_SUMMARY.md) — complete guide to classical AI algorithms, ML models, architecture & demo script
 - [Installation Guide](docs/INSTALLATION.md) — detailed setup for backend + frontend
 - [API Documentation](docs/API_DOCUMENTATION.md) — every endpoint, request/response shape
 - [Architecture, ER Diagram & Flowchart](docs/ARCHITECTURE.md)

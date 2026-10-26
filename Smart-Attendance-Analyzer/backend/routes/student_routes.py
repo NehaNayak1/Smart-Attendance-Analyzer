@@ -173,12 +173,39 @@ def get_dashboard(current_user: User = Depends(require_student), db: Session = D
 
     overall_needed = max(0, int(round(3 * total_cls_sum - 4 * att_cls_sum))) if overall_attendance < 75.0 else 0
 
+    # Run A* Search Algorithm (Module 3, Lecture 16) for optimal multi-subject recovery
+    from ml.ai_search import a_star_recovery_planner
+    from models import AStarRecoveryPlanOut, AStarStepOut, AStarSubjectBreakdownOut
+
+    subjects_for_astar = [
+        {
+            "id": r.subject_id,
+            "name": r.subject.name,
+            "classes_attended": r.classes_attended,
+            "total_classes": r.total_classes,
+            "difficulty_weight": 1.2 if (r.internal_marks or 50) < 50 else 1.0,
+        }
+        for r in records
+    ]
+    a_star_raw = a_star_recovery_planner(subjects_for_astar, target_percentage=75.0)
+    a_star_plan = AStarRecoveryPlanOut(
+        algorithm=a_star_raw["algorithm"],
+        target_percentage=a_star_raw["target_percentage"],
+        achieved=a_star_raw["achieved"],
+        total_classes_to_attend=a_star_raw["total_classes_to_attend"],
+        total_effort_cost=a_star_raw["total_effort_cost"],
+        nodes_explored=a_star_raw["nodes_explored"],
+        steps=[AStarStepOut(**s) for s in a_star_raw["steps"]],
+        subject_breakdown=[AStarSubjectBreakdownOut(**b) for b in a_star_raw["subject_breakdown"]],
+    )
+
     recovery_plan = RecoveryPlanOut(
         classes_needed_for_75=overall_needed,
         current_percentage=overall_attendance,
         required_percentage=75.0,
         total_classes=total_cls_sum,
         classes_attended=att_cls_sum,
+        a_star_plan=a_star_plan,
     )
 
     # Calculate Early Risk Alert message

@@ -23,8 +23,31 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user
 from database import Attendance, Prediction, Student, User, get_db
-from models import PredictionHistoryOut, PredictionOut, PredictionRequest, RoleEnum
+from models import (
+    PredictionHistoryOut,
+    PredictionOut,
+    PredictionRequest,
+    RoleEnum,
+    AStarRecoveryPlanOut,
+    AStarRecoveryRequest,
+    AStarRecoveryResponse,
+    AStarStepOut,
+    AStarSubjectBreakdownOut,
+    BackwardChainQueryRequest,
+    BackwardChainQueryResponse,
+    HillClimbingAllocationItem,
+    HillClimbingOptimizeRequest,
+    HillClimbingOptimizeResponse,
+    HillClimbingTrajectoryPoint,
+    KnowledgeRuleOut,
+)
 from ml.predict import StudentFeatures, get_full_prediction
+from ml.ai_search import a_star_recovery_planner, hill_climbing_attendance_optimizer
+from ml.knowledge_engine import (
+    DEFAULT_RULES,
+    backward_chain,
+    extract_facts_from_features,
+)
 
 router = APIRouter(prefix="/api/prediction", tags=["Prediction"])
 
@@ -250,3 +273,181 @@ def get_model_info(current_user: User = Depends(get_current_user)) -> dict:
             result[key] = None
 
     return result
+
+
+# --------------------------------------------------------------------------
+# Classical AI Algorithm Endpoints (Module 3 & Module 4)
+# --------------------------------------------------------------------------
+
+def _extract_subject_dicts(
+    db: Session,
+    current_user: User,
+    student_code: Optional[str],
+    subjects_input: Optional[List[Any]],
+) -> tuple[List[Dict[str, Any]], Optional[str]]:
+    """Helper to extract a list of subject dictionaries from live student or manual input."""
+    if subjects_input:
+        return [
+            {
+                "subject_id": s.subject_id,
+                "name": s.name,
+                "classes_attended": s.classes_attended,
+                "total_classes": s.total_classes,
+                "difficulty_weight": s.difficulty_weight,
+                "internal_marks": s.internal_marks or 50.0,
+            }
+            for s in subjects_input
+        ], student_code
+
+    if student_code:
+        student = _resolve_target_student(db, current_user, student_code)
+        if not student:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Student '{student_code}' not found")
+        records = db.query(Attendance).filter(Attendance.student_id == student.id).join(Attendance.subject).all()
+        if not records:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"No attendance records for {student_code}")
+        return [
+            {
+                "subject_id": r.subject_id,
+                "name": r.subject.name,
+                "classes_attended": r.classes_attended,
+                "total_classes": r.total_classes,
+                "difficulty_weight": 1.2 if (r.internal_marks or 50) < 50 else 1.0,
+                "internal_marks": r.internal_marks or 50.0,
+            }
+            for r in records
+        ], student.student_code
+
+    # Default to logged-in student if student role
+    if current_user.role == RoleEnum.student.value and current_user.student:
+        return _extract_subject_dicts(db, current_user, current_user.student.student_code, None)
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Either supply 'student_code' or provide a list of 'subjects'",
+    )
+
+
+@router.post("/ai/a-star-recovery", response_model=AStarRecoveryResponse)
+def run_a_star_recovery(
+    payload: AStarRecoveryRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AStarRecoveryResponse:
+    """
+    Module 3 (Lecture 16): A* Search Algorithm.
+    Finds the mathematically optimal, minimum-effort sequence of classes
+    a student must attend across subjects to satisfy the target percentage.
+    """
+    subjects, code = _extract_subject_dicts(db, current_user, payload.student_code, payload.subjects)
+    raw_plan = a_star_recovery_planner(subjects, target_percentage=payload.target_percentage)
+
+    plan_out = AStarRecoveryPlanOut(
+        algorithm=raw_plan["algorithm"],
+        target_percentage=raw_plan["target_percentage"],
+        achieved=raw_plan["achieved"],
+        total_classes_to_attend=raw_plan["total_classes_to_attend"],
+        total_effort_cost=raw_plan["total_effort_cost"],
+        nodes_explored=raw_plan["nodes_explored"],
+        steps=[AStarStepOut(**s) for s in raw_plan["steps"]],
+        subject_breakdown=[AStarSubjectBreakdownOut(**b) for b in raw_plan["subject_breakdown"]],
+    )
+    return AStarRecoveryResponse(student_code=code, plan=plan_out)
+
+
+@router.post("/ai/hill-climbing-optimize", response_model=HillClimbingOptimizeResponse)
+def run_hill_climbing_optimization(
+    payload: HillClimbingOptimizeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> HillClimbingOptimizeResponse:
+    """
+    Module 3 (Lecture 19): Steepest-Ascent Hill Climbing Search.
+    Finds the optimal allocation of a constrained attendance budget (K classes)
+    across subjects to maximize overall academic safety and minimize detention penalties.
+    """
+    subjects, code = _extract_subject_dicts(db, current_user, payload.student_code, payload.subjects)
+    result = hill_climbing_attendance_optimizer(subjects, attendance_budget=payload.attendance_budget)
+
+    return HillClimbingOptimizeResponse(
+        algorithm=result["algorithm"],
+        student_code=code,
+        attendance_budget=result["attendance_budget"],
+        iterations=result["iterations"],
+        initial_score=result["initial_score"],
+        optimized_score=result["optimized_score"],
+        score_improvement=result["score_improvement"],
+        allocations=[HillClimbingAllocationItem(**a) for a in result["allocations"]],
+        convergence_trajectory=[HillClimbingTrajectoryPoint(**p) for p in result["convergence_trajectory"]],
+    )
+
+
+@router.post("/ai/backward-chain-query", response_model=BackwardChainQueryResponse)
+def run_backward_chaining_query(
+    payload: BackwardChainQueryRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> BackwardChainQueryResponse:
+    """
+    Module 4 (Lecture 23): Backward Chaining Inference (Goal-Driven).
+    Tests whether a hypothesis/goal (e.g., 'exam_eligibility_cleared',
+    'academic_probation_risk', 'high_exam_detention_risk') can be logically proven
+    from student facts and institutional regulations.
+    """
+    # Resolve student facts
+    if payload.student_code:
+        student = _resolve_target_student(db, current_user, payload.student_code)
+        features, leaves, marks, _ = _build_features_from_student(db, student)
+        code = student.student_code
+    elif payload.manual_features:
+        features, leaves, marks, _ = _build_features_from_manual(payload.manual_features)
+        code = None
+    elif current_user.role == RoleEnum.student.value and current_user.student:
+        student = current_user.student
+        features, leaves, marks, _ = _build_features_from_student(db, student)
+        code = student.student_code
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provide 'student_code' or 'manual_features' to query backward chaining",
+        )
+
+    facts = extract_facts_from_features(
+        current_attendance=features.current_attendance,
+        previous_attendance=features.previous_attendance,
+        leaves_taken=features.leaves_taken,
+        internal_marks=features.internal_marks,
+        distance_km=features.distance_km,
+        monthly_attendance=features.monthly_attendance,
+    )
+
+    proved, proof_tree, missing = backward_chain(payload.target_goal, facts)
+
+    return BackwardChainQueryResponse(
+        algorithm="Backward Chaining Inference (Goal-Driven)",
+        student_code=code,
+        target_goal=payload.target_goal,
+        proved=proved,
+        proof_tree=proof_tree,
+        missing_facts=missing,
+        current_known_facts=sorted(list(facts)),
+    )
+
+
+@router.get("/ai/knowledge-rules", response_model=List[KnowledgeRuleOut])
+def list_knowledge_rules(current_user: User = Depends(get_current_user)) -> List[KnowledgeRuleOut]:
+    """
+    Module 4: Inspect the Knowledge Base rules (Horn clauses) used by the
+    Forward and Backward Chaining engines.
+    """
+    return [
+        KnowledgeRuleOut(
+            rule_id=r.rule_id,
+            name=r.name,
+            antecedents=r.antecedents,
+            consequent=r.consequent,
+            recommendation=r.recommendation,
+            explanation=r.explanation,
+        )
+        for r in DEFAULT_RULES
+    ]

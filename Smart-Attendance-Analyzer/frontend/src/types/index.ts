@@ -90,9 +90,47 @@ export interface PredictionOut {
   risk_confidence: number | null;
   forecast_attendance_percentage: number;
   forecast_model_used: string;
-  cluster_segment: Segment;
   ai_recommendations: string[];
+  knowledge_inference?: {
+    algorithm?: string;
+    iterations?: number;
+    initial_facts?: string[];
+    derived_facts?: string[];
+    fired_rules?: Array<{
+      rule_id: string;
+      rule_name: string;
+      antecedents_satisfied: string[];
+      consequent_derived: string;
+      explanation?: string;
+    }>;
+    recommendations?: string[];
+    risk_diagnoses?: string[];
+  };
   created_at: string | null;
+}
+
+export interface AStarStep {
+  step_number: number;
+  action: string;
+  cumulative_g_cost: number;
+}
+
+export interface AStarSubjectBreakdown {
+  subject: string;
+  initial_percentage: number;
+  classes_needed: number;
+  projected_percentage: number;
+}
+
+export interface AStarPlan {
+  algorithm: string;
+  target_percentage: number;
+  achieved: boolean;
+  total_classes_to_attend: number;
+  total_effort_cost: number;
+  nodes_explored: number;
+  steps: AStarStep[];
+  subject_breakdown: AStarSubjectBreakdown[];
 }
 
 export interface RecoveryPlan {
@@ -101,6 +139,7 @@ export interface RecoveryPlan {
   required_percentage: number;
   total_classes: number;
   classes_attended: number;
+  a_star_plan?: AStarPlan | null;
 }
 
 export interface StudentDashboard {

@@ -203,6 +203,56 @@ export default function StudentDashboard() {
               </p>
             </div>
           </div>
+
+          {/* A* Search Optimal Multi-Subject Recovery Path (Module 3) */}
+          {recovery_plan.a_star_plan && recovery_plan.a_star_plan.total_classes_to_attend > 0 && (
+            <div className="mt-6 border-t border-ink-100 pt-5 dark:border-ink-700">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center rounded-md bg-gold/15 px-2.5 py-1 text-xs font-semibold text-gold-dark dark:text-gold">
+                    ⚡ {recovery_plan.a_star_plan.algorithm}
+                  </span>
+                  <span className="text-xs text-slate">
+                    Optimal path resolved in <strong className="font-mono text-ink-900 dark:text-white">{recovery_plan.a_star_plan.nodes_explored}</strong> search nodes
+                  </span>
+                </div>
+                <span className="text-xs font-mono text-slate">
+                  Total Classes to Recover: <strong className="text-danger font-bold">{recovery_plan.a_star_plan.total_classes_to_attend}</strong>
+                </span>
+              </div>
+
+              {/* Subject Breakdown */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                {recovery_plan.a_star_plan.subject_breakdown.map((sb) => (
+                  <div
+                    key={sb.subject}
+                    className="flex flex-col justify-between rounded-lg border border-ink-100 bg-white p-3 shadow-xs dark:border-ink-700 dark:bg-ink-900"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-ink-800 dark:text-ink-100 truncate">{sb.subject}</span>
+                      <span
+                        className={`text-xs font-mono font-bold ${
+                          sb.initial_percentage < 75 ? "text-danger" : "text-success"
+                        }`}
+                      >
+                        {sb.initial_percentage}%
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-xs text-slate">
+                      <span>Action:</span>
+                      {sb.classes_needed > 0 ? (
+                        <span className="font-bold text-gold-dark dark:text-gold font-mono">
+                          Attend next +{sb.classes_needed} classes
+                        </span>
+                      ) : (
+                        <span className="text-success font-medium">Safe (0 needed)</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </SectionCard>
       )}
 

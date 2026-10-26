@@ -56,6 +56,27 @@ function PredictionResultCard({ result }: { result: PredictionOut }) {
           </li>
         ))}
       </ul>
+
+      {result.knowledge_inference && result.knowledge_inference.fired_rules && result.knowledge_inference.fired_rules.length > 0 && (
+        <div className="mt-4 rounded-lg border border-gold/20 bg-gold/5 p-3 dark:border-gold/30 dark:bg-gold/10">
+          <div className="flex items-center justify-between text-xs font-semibold text-gold-dark dark:text-gold mb-1.5">
+            <span>🧠 {result.knowledge_inference.algorithm || "Forward Chaining Inference (Module 4)"}</span>
+            <span className="font-mono text-[11px]">{result.knowledge_inference.fired_rules.length} Rules Triggered</span>
+          </div>
+          {result.knowledge_inference.risk_diagnoses && result.knowledge_inference.risk_diagnoses.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {result.knowledge_inference.risk_diagnoses.map((d: string) => (
+                <span
+                  key={d}
+                  className="rounded bg-ink-200/60 px-2 py-0.5 font-mono text-[11px] text-ink-800 dark:bg-ink-700 dark:text-ink-200"
+                >
+                  ⚡ {d.replace(/_/g, " ")}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </SectionCard>
   );
 }

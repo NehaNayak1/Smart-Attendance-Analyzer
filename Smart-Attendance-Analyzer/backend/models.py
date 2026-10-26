@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
 
@@ -238,12 +238,37 @@ class WhatIfResponse(BaseModel):
     trajectory: List[WhatIfTrajectoryPoint]
 
 
+class AStarStepOut(BaseModel):
+    step_number: int
+    action: str
+    cumulative_g_cost: float
+
+
+class AStarSubjectBreakdownOut(BaseModel):
+    subject: str
+    initial_percentage: float
+    classes_needed: int
+    projected_percentage: float
+
+
+class AStarRecoveryPlanOut(BaseModel):
+    algorithm: str = "A* Heuristic Search (f(n) = g(n) + h(n))"
+    target_percentage: float
+    achieved: bool
+    total_classes_to_attend: int
+    total_effort_cost: float
+    nodes_explored: int
+    steps: List[AStarStepOut] = []
+    subject_breakdown: List[AStarSubjectBreakdownOut] = []
+
+
 class RecoveryPlanOut(BaseModel):
     classes_needed_for_75: int
     current_percentage: float
     required_percentage: float = 75.0
     total_classes: int
     classes_attended: int
+    a_star_plan: Optional[AStarRecoveryPlanOut] = None
 
 
 class DepartmentStatOut(BaseModel):
@@ -378,6 +403,7 @@ class PredictionOut(BaseModel):
     cluster_segment: SegmentEnum
 
     ai_recommendations: List[str]
+    knowledge_inference: Optional[Dict[str, Any]] = None
 
     created_at: Optional[datetime] = None
 
@@ -385,6 +411,90 @@ class PredictionOut(BaseModel):
 class PredictionHistoryOut(BaseModel):
     student_code: str
     history: List[PredictionOut]
+
+
+# --------------------------------------------------------------------------
+# Classical AI Algorithm Schemas (Module 3 & Module 4)
+# --------------------------------------------------------------------------
+
+class SubjectRecoveryInput(BaseModel):
+    subject_id: Optional[int] = None
+    name: str
+    classes_attended: int = Field(..., ge=0)
+    total_classes: int = Field(..., ge=1)
+    difficulty_weight: float = Field(1.0, ge=0.5, le=3.0)
+    internal_marks: Optional[float] = Field(None, ge=0, le=100)
+
+
+class AStarRecoveryRequest(BaseModel):
+    student_code: Optional[str] = None
+    target_percentage: float = Field(75.0, ge=50.0, le=100.0)
+    subjects: Optional[List[SubjectRecoveryInput]] = None
+
+
+class AStarRecoveryResponse(BaseModel):
+    student_code: Optional[str] = None
+    plan: AStarRecoveryPlanOut
+
+
+class HillClimbingOptimizeRequest(BaseModel):
+    student_code: Optional[str] = None
+    attendance_budget: int = Field(..., ge=1, le=100)
+    subjects: Optional[List[SubjectRecoveryInput]] = None
+
+
+class HillClimbingAllocationItem(BaseModel):
+    subject: str
+    current_percentage: float
+    allocated_classes: int
+    projected_percentage: float
+    status: str
+
+
+class HillClimbingTrajectoryPoint(BaseModel):
+    iteration: int
+    score: float
+    allocation: List[int]
+
+
+class HillClimbingOptimizeResponse(BaseModel):
+    algorithm: str = "Steepest-Ascent Hill Climbing Search"
+    student_code: Optional[str] = None
+    attendance_budget: int
+    iterations: int
+    initial_score: float
+    optimized_score: float
+    score_improvement: float
+    allocations: List[HillClimbingAllocationItem]
+    convergence_trajectory: List[HillClimbingTrajectoryPoint]
+
+
+class BackwardChainQueryRequest(BaseModel):
+    student_code: Optional[str] = None
+    target_goal: str = Field(
+        ...,
+        description="Goal to test, e.g. 'exam_eligibility_cleared', 'academic_probation_risk', 'high_exam_detention_risk'",
+    )
+    manual_features: Optional[PredictionRequest] = None
+
+
+class BackwardChainQueryResponse(BaseModel):
+    algorithm: str = "Backward Chaining Inference (Goal-Driven)"
+    student_code: Optional[str] = None
+    target_goal: str
+    proved: bool
+    proof_tree: Dict[str, Any]
+    missing_facts: List[str]
+    current_known_facts: List[str]
+
+
+class KnowledgeRuleOut(BaseModel):
+    rule_id: str
+    name: str
+    antecedents: List[str]
+    consequent: str
+    recommendation: Optional[str] = None
+    explanation: Optional[str] = None
 
 
 # --------------------------------------------------------------------------
